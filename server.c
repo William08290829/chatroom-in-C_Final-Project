@@ -187,7 +187,7 @@ void *handle_client(void *arg){
 
 	// Name
 	if(recv(cli->sockfd, name, 32, 0) <= 0 || strlen(name) <  2 || strlen(name) >= 32-1){	//recv如果返回值是 0，表示對方已經關閉連接。如果返回值是 -1，表示發生錯誤
-		printf("Didn't enter the name.\n");
+		// printf("Didn't enter the name.\n");
 		leave_flag = 1;
 	} else{
 		strcpy(cli->name, name);

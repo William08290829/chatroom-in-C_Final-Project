@@ -23,69 +23,16 @@ typedef struct HashTable {
 } HashTable;
 
 // 創建一個新的節點
-USER *createNode(const char *name, const char *pw) {
-    USER *newNode = (USER *)malloc(sizeof(USER));
-    if (newNode != NULL) {
-        strcpy(newNode->username, name);
-        strcpy(newNode->passward, pw);
-        newNode->next = NULL;
-    }
-    return newNode;
-}
+USER *createNode(const char *name, const char *pw);
 
-void initHashTable(HashTable *hashTable) {
-    for (int i = 0; i < TABLE_SIZE; ++i) {
-        hashTable->table[i] = NULL;
-    }
-}
+void initHashTable(HashTable *hashTable);
 
 //HashFunction
-int hashFunction(const char *name) {
-    int hash = 0;
-    for (int i = 0; name[i] != '\0'; ++i) {
-        hash += name[i];
-    }
-    return hash % TABLE_SIZE;
-}
+int hashFunction(const char *name);
 
-void insertItem(HashTable *hashTable, const char *name, const char *password) {
-    int index = hashFunction(name);
-    USER *newNode = createNode(name, password);
-    
-    //Linked List
-    newNode->next = hashTable->table[index];
-    hashTable->table[index] = newNode;
-}
+void insertItem(HashTable *hashTable, const char *name, const char *password);
 
 
-int loginUser (const HashTable *hashTable, const char *name, const char *password){
-    int index = hashFunction(name);
-    
-    USER *pointer = hashTable->table[index];
-    
-    // 在Linked List中查找
-    while (pointer != NULL) {
-        if (strcmp(pointer->username, name) == 0) {
-            if(strcmp(pointer->passward, password) == 0){
-                return 1;
-            }
-            // 密碼錯了
-            return 0;
-        }
-        pointer = pointer->next;
-    }
-    //找不到
-    return 0;  
-}
+int loginUser (const HashTable *hashTable, const char *name, const char *password);
 
-void freeHashTable(HashTable *hashTable) {
-    for (int i = 0; i < TABLE_SIZE; ++i) {
-        USER *current = hashTable->table[i];
-        while (current != NULL) {
-            USER *next = current->next;
-            free(current);
-            current = next;
-        }
-        hashTable->table[i] = NULL;
-    }
-}
+void freeHashTable(HashTable *hashTable);

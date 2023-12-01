@@ -144,8 +144,9 @@ int main(int argc, char **argv){
           break;
         }
         else if(strcmp(response, "Login Fail") == 0){
-          printf("Login Fail, can't find your account.\n Would you like to Create an account?(1 or 0)\n");
-          fgets(input, INPUT_SIZE, stdin);
+          printf("Login Fail, can't find your account.\n");
+          printf("Goodbye...\n");
+          return EXIT_FAILURE;
           wantCreateAccount = atoi(input);
           haveAccount = !wantCreateAccount;
         }
@@ -221,7 +222,6 @@ int main(int argc, char **argv){
 	while (1){
 		if(flag){
 			printf("\nBye\n");
-      // freeHashTable(&userAccountDatabase);
 			break;
     }
 	}
