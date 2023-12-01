@@ -112,7 +112,65 @@ void send_message(char *s, int uid){
 
 	pthread_mutex_unlock(&clients_mutex);
 }
+void send_message_to_specific_user(char *s, int uid){
+ pthread_mutex_lock(&clients_mutex);
+ for(int i=0; i<MAX_CLIENTS; ++i){
+  if(clients[i]){
+   if(clients[i]->uid == uid){
+    if(write(clients[i]->sockfd, s, strlen(s)) < 0){
+     perror("ERROR: write to descriptor failed");
+     break;
+    }
+   }
+  }
+ }
+ pthread_mutex_unlock(&clients_mutex);
+}
 
+void send_private_message(char *s, int receiver_uid){
+ pthread_mutex_lock(&clients_mutex);
+ for(int i=0; i<MAX_CLIENTS; ++i){
+  if(clients[i]){
+   if(clients[i]->uid==receiver_uid){
+    if(write(clients[i]->sockfd, s, strlen(s)) < 0){
+     perror("ERROR: write to descriptor failed");
+     break;
+    }
+   }
+  }
+ }
+ pthread_mutex_unlock(&clients_mutex);
+}
+
+int checkColonBeforeGreater(char* str) {
+ printf("str in checkColonBeforeGreater %s\n",str);
+    int foundColon = 0;
+    int foundGreater = 0;
+
+    for (int i = 0; str[i] != '\0'; ++i) {
+        if (str[i] == ':') {
+            foundColon = 1;
+        } else if (str[i] == '>') {
+            foundGreater = 1;
+            if (foundColon==0) return 0; // 如果 '>' 出現在 ':' 前面，回傳0
+        }
+    }
+    if (foundColon==1&&foundGreater==1)return 1;
+ 	else return 0;
+}
+void removeLeadingSpaces(char* str) {
+    int i, j = 0, len;
+    len = strlen(str);
+    for (i = 0; i < len; i++) {// 遍歷字串找到第一個非空格字符的位置
+        if (str[i] != ' ' && str[i] != '\t' && str[i] != '\n' && str[i] != '\r') {
+            break;
+        }
+    }
+    for (j = 0; j < len - i; j++) {// 將非空格字符移到字串開頭
+        str[j] = str[i + j];
+    }
+    str[j] = '\0'; // 在新的開頭位置後添加結尾符號
+}
 // Account request
 void handle_account_request(HashTable *hashTable, char *request, int sockfd, int uid){
 	char *token = strtok(request, " ");
@@ -206,12 +264,61 @@ void *handle_client(void *arg){
 		int receive = recv(cli->sockfd, buff_out, BUFFER_SZ, 0);
 		if (receive > 0){
 			if(strlen(buff_out) > 0){
-				// handle_account_request(&userAccountDatabase, buff_out, cli->sockfd, cli->uid);
-				send_message(buff_out, cli->uid);
-
-				str_trim_lf(buff_out, strlen(buff_out));
-				printf("%s\n", buff_out);
-				// printf("%s -> %s\n", buff_out, cli->name);
+				//printf("The current buffouts: %s\n",buff_out);
+				int find_member_bool,private_msg_bool;
+				char name[100],value[1000],private_str[1000],to_whom[1000],msg[1000],private_msg[2000];
+				sscanf(buff_out,"%[^:]:%[^\n]", name, value);
+				removeLeadingSpaces(value);
+				if(strcmp(value,"member")==0)find_member_bool=1;
+				else find_member_bool=0;
+				if(checkColonBeforeGreater(value)){
+					// printf("here\n");
+					sscanf(value, "%[^:]:%[^>]>%[^:]s",private_str, to_whom,msg);
+					printf("private_str: %s\n",private_str);
+					printf("to_whom: %s\n", to_whom);
+					//printf("msg: %s\n",msg);
+					snprintf(private_msg, 1000, "Private message from ");
+					strncat(private_msg, cli->name, 2000-strlen(private_msg)-strlen(cli->name));
+					strncat(private_msg,":", 2000-strlen(private_msg)-1);
+					strncat(private_msg,msg, 2000-strlen(private_msg)-strlen(msg));
+					printf("private_msg: %s\n",private_msg);
+					if(strcmp(private_str,"private")==0)private_msg_bool=1;
+					else private_msg_bool=0;
+				}
+				else private_msg_bool=0;
+				//-------------------------------------------
+				if(private_msg_bool==1){
+					int receiver_uid=-1;
+					for (int i = 0; i < cli_count; i++) {
+						if(strcmp(clients[i]->name,to_whom)==0){
+							receiver_uid=clients[i]->uid;
+							break;
+						}
+					}
+					int length = strlen(private_msg);
+					sprintf(private_msg + length, "\n"); // 在字串尾端加上換行符號
+					if(receiver_uid==-1)send_message_to_specific_user("the user not online\n", cli->uid);
+					else send_private_message(private_msg,receiver_uid);
+				}
+				else if (find_member_bool==1) {//查詢當前上線的成員
+					char temp[BUFFER_SZ];
+					snprintf(temp, sizeof(temp), "Online member: ");
+					for (int i = 0; i < cli_count; i++) {// 這裡會先複製 "Online member: "，然後進行串接
+						strncat(temp, clients[i]->name, sizeof(temp) - strlen(temp) - 1);
+						if (i < cli_count - 1) {
+							strncat(temp, ", ", sizeof(temp) - strlen(temp) - 1);
+						}
+						str_trim_lf(temp, strlen(temp));
+					}
+					int length = strlen(temp);
+					if (temp[length - 1] != '\n') sprintf(temp + length, "\n"); // 在字串尾端加上換行符號
+					send_message_to_specific_user(temp, cli->uid);
+				}//--------------------------------------------------
+				else{//無特殊指令
+					send_message(buff_out, cli->uid);
+					str_trim_lf(buff_out, strlen(buff_out));
+					printf("%s \n", buff_out);
+				}
 			}
 		}
 		else if (receive == 0 || strcmp(buff_out, "exit") == 0){
