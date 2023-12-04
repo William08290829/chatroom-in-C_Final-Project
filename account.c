@@ -5,7 +5,7 @@
 
 
 // 創建一個新的節點
-USER *createNode(const char *name, const char *pw) {
+USER *createUser(const char *name, const char *pw) {
     USER *newNode = (USER *)malloc(sizeof(USER));
     if (newNode != NULL) {
         strcpy(newNode->username, name);
@@ -32,7 +32,7 @@ int hashFunction(const char *name) {
 
 void insertItem(HashTable *hashTable, const char *name, const char *password) {
     int index = hashFunction(name);
-    USER *newNode = createNode(name, password);
+    USER *newNode = createUser(name, password);
     
     //Linked List
     newNode->next = hashTable->table[index];

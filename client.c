@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <sys/time.h>
 #include "account.h"
 
 #define LENGTH 2048
@@ -41,8 +42,40 @@ void catch_ctrl_c_and_exit(int sig) {   //當用戶按下 Ctrl+C 時，flag = 1�
     flag = 1;
 }
 
+//等三秒再判斷
+int wait_for_string_input(const char *target) {
+    char input[LENGTH];            // 定義一個緩沖區來存儲用戶輸入的字符串
+    fd_set rfds;                   // 定義文件描述符集合，用於 select 函數
+    struct timeval tv;             // 定義時間結構體，用於設置 select 的等待時間
+    int retval;                    // 用於存儲 select 函數的返回值
 
-void send_msg_handler() {
+    FD_ZERO(&rfds);                // 清空文件描述符集合
+    FD_SET(STDIN_FILENO, &rfds);   // 將標準輸入文件描述符添加到集合中
+
+    tv.tv_sec = 5;                 // 設置等待時間為5秒
+    tv.tv_usec = 0;
+
+    retval = select(STDIN_FILENO + 1, &rfds, NULL, NULL, &tv);
+    // 使用 select 函數等待標準輸入是否有可讀事件
+
+    if (retval == -1) {
+        perror("select()");         // 如果 select 返回 -1，表示出錯，打印錯誤信息
+        return 0;                   // 返回 0，表示出錯
+    } else if (retval) {
+        // 如果 retval 大於 0，表示標準輸入有可讀事件
+        fgets(input, LENGTH, stdin);  // 從標準輸入讀取用戶輸入的字符串
+        str_trim_lf(input, LENGTH);   // 移除可能的換行符
+
+        return strcmp(input, target) == 0; // 檢查輸入是否與目標字符串相同
+    } else {
+        // 如果 retval 等於 0，表示超時，沒有輸入
+        return 0; // 返回 0，表示沒有輸入
+    }
+}
+
+
+
+void send_msg_handler(){
     char message[LENGTH] = {};
     char buffer[LENGTH + 64] = {}; // 增加缓冲区大小
     //printf("in send_msg\n");
@@ -53,11 +86,15 @@ void send_msg_handler() {
         //printf("in while\n");
         if (strcmp(message, "exit") == 0) {
             break;
-        } else {
-            // 使用snprintf代替sprintf
-            snprintf(buffer, sizeof(buffer), "%s: %s\n", name, message);
-            //printf("now sending\n");
-            send(sockfd, buffer, strlen(buffer), 0); //將數據發送到伺服器  sockfd 是與伺服器建立的套接字，所以消息會被發送到伺服器
+        } 
+        else {
+            if (wait_for_string_input("return")) {
+              continue;
+            }
+            else{
+              snprintf(buffer, sizeof(buffer), "%s: %s\n", name, message);
+              send(sockfd, buffer, strlen(buffer), 0);
+            } 
         }
 
         bzero(message, LENGTH);
@@ -71,8 +108,14 @@ void recv_msg_handler() {   //處理從伺服器接收到的消息
   while (1) {
 		int receive = recv(sockfd, message, LENGTH, 0);   //recv如果返回值是 0，表示對方已經關閉連接。如果返回值是 -1，表示發生錯誤
     if (receive > 0) {  //成功接收了指定數量的字節。接收到的字節數量是返回值
-      printf("%s", message);
-      str_overwrite_stdout();
+      if (strcmp(message, "blacklist") == 0) {
+          printf("You are in the blacklist. Exiting...\n");
+          catch_ctrl_c_and_exit(2);  // 结束客户端
+      } 
+      else {
+          printf("%s", message);
+          str_overwrite_stdout();
+      }
     } 
     else if (receive == 0) {
 			break;

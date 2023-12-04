@@ -23,7 +23,7 @@ typedef struct HashTable {
 } HashTable;
 
 // 創建一個新的節點
-USER *createNode(const char *name, const char *pw);
+USER *createUser(const char *name, const char *pw);
 
 void initHashTable(HashTable *hashTable);
 

@@ -9,6 +9,7 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <malloc.h>
 #include "account.h"
 
 #define MAX_CLIENTS 100
@@ -19,10 +20,12 @@
 #define TABLE_SIZE 10
 #define REQUEST_SIZE 100
 #define RESPONSE_SIZE 100
+#define MAX_BLACKLIST_SIZE 10
 
 
 static _Atomic unsigned int cli_count = 0;	//_Atomic原子性 不會被其他線程所打斷
 static int uid = 10;
+int room = 0;
 
 /* Client structure */
 typedef struct{
@@ -32,15 +35,122 @@ typedef struct{
 	char name[NAME_SIZE];
 } client_t;
 
+// 黑名單
+typedef struct blacklist {
+    int room;
+    char blacklist_name[MAX_BLACKLIST_SIZE][NAME_SIZE];
+    struct blacklist *next;
+} Blacklist;
+
+Blacklist *head = NULL;
+
+void createNode(int room, char names[][NAME_SIZE], int count) {
+    Blacklist *newNode = (Blacklist *)malloc(sizeof(Blacklist));
+    if (newNode != NULL) {
+        newNode->room = room;
+        newNode->next = NULL;
+
+        for (int i = 0; i < count; i++) {
+            if (i < MAX_BLACKLIST_SIZE) {
+                strcpy(newNode->blacklist_name[i], names[i]);
+            } else {
+                // Handle the case where the blacklist is full
+                fprintf(stderr, "Blacklist is full. Some names were not added.\n");
+                break;
+            }
+        }
+
+        if (head == NULL) {
+            head = newNode;  // If the list is empty, make the new node the head
+        } 
+		else {
+            // Traverse to the end of the list
+            Blacklist *ptr = head;
+            while (ptr->next != NULL) {
+                ptr = ptr->next;
+            }
+
+            // Add the new node to the end of the list
+            ptr->next = newNode;
+        }
+    }
+}
+
+int findnode(Blacklist* head, int room, char *name) {
+    int a = 0;
+    Blacklist* ptr = head;
+    while (ptr != NULL) {
+        if (room != ptr->room) {
+            ptr = ptr->next;
+        } else {
+            a = 1;
+            break;  // Add a break statement to exit the loop when room is found
+        }
+    }
+    if (a == 1) {
+        for (int i = 0; i < 6; i++) {
+            if (strlen(ptr->blacklist_name[i]) > 0 && strcmp(ptr->blacklist_name[i], name) == 0) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 client_t *clients[MAX_CLIENTS];
 
 pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;	//mutex互斥鎖
 
-//NEW
+// ==============================================================
+// File
+pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
+// 全局變量，用於文件操作
+FILE *logfile;
+
+// 清除文件内容
+void clear_file() {
+	char filename[32];
+	sprintf(filename, "room%d.txt", room);
+    FILE *clearFile = fopen(filename, "w");
+    if (clearFile == NULL) {
+        perror("ERROR: Could not open file for clearing");
+        exit(EXIT_FAILURE);
+    }
+    fclose(clearFile);
+}
+
+// 初始化文件，打開文件寫入
+void init_file() {
+	//清除文件
+	clear_file();
+	pthread_mutex_lock(&file_mutex);  // 加鎖
+	char filename[32];
+	sprintf(filename, "room%d.txt", room);
+    logfile = fopen(filename, "a");
+    if (logfile == NULL) {
+        perror("ERROR: Could not open log file");
+        exit(EXIT_FAILURE);
+    }
+	pthread_mutex_unlock(&file_mutex);  // 解鎖
+}
+
+// 寫入消息到文件
+void write_to_file(const char *message) {
+	pthread_mutex_lock(&file_mutex);  // 加鎖
+    if (logfile != NULL) {
+        fprintf(logfile, "%s", message);
+        fflush(logfile); // 立即寫入文件
+    }
+	pthread_mutex_unlock(&file_mutex);  // 解鎖
+}
+// ==============================================================
+
+//Hashtable
 typedef struct {
     HashTable *hashTable;
     client_t *client;
 } ThreadArgs;
+
 
 void str_overwrite_stdout() {
     printf("\r%s", "> ");	//\r:回車(覆蓋該行使光標回到開頭)
@@ -162,6 +272,7 @@ void handle_account_request(HashTable *hashTable, char *request, int sockfd, int
 	}
 }
 
+
 /* Handle all communication with the client */
 void *handle_client(void *arg){
 	char buff_out[BUFFER_SZ];
@@ -175,7 +286,7 @@ void *handle_client(void *arg){
 	cli_count++;
 	client_t *cli = args->client;
 
-
+	// 接收登入資訊
 	int receive = recv(cli->sockfd, request, REQUEST_SIZE, 0);
 	if(receive > 0){ 	//成功接收
 		handle_account_request(hashTable, request, cli->sockfd, cli->uid);
@@ -190,10 +301,26 @@ void *handle_client(void *arg){
 		// printf("Didn't enter the name.\n");
 		leave_flag = 1;
 	} else{
-		strcpy(cli->name, name);
-		sprintf(buff_out, "%s has joined\n", cli->name);
-		printf("%s", buff_out);	//在server上印出誰加入了
-		send_message(buff_out, cli->uid);	//在client上印出誰加入了
+		// 在黑名單中未找到
+		if (findnode(head, room, name) == 0){
+			strcpy(cli->name, name);
+			sprintf(buff_out, "%s has joined\n", cli->name);
+			printf("%s", buff_out);	 //在server上印出誰加入了
+			send_message(buff_out, cli->uid);	//在client上印出誰加入了
+
+			// Write the joined message to the file
+			fprintf(logfile, "%s has joined\n", cli->name);
+			fflush(logfile);
+		}
+		// 在黑名單中找到
+		else{
+			strcpy(cli->name, name);
+			sprintf(buff_out, "%s is in blacklist, so he/she can't login in\n", cli->name);
+			printf("%s", buff_out);
+			send_message(buff_out, cli->uid);
+			send(cli->sockfd, "blacklist", strlen("blacklist"), 0);
+            leave_flag = 1;
+		}
 	}
 
 	bzero(buff_out, BUFFER_SZ);	//清空 buff_out的內存
@@ -244,12 +371,20 @@ int main(int argc, char **argv){
 		return EXIT_FAILURE;
 	}
 
+	char names_1[6][NAME_SIZE] = {"John", "Doe", "Alice", "Bob", "Eve", "Charlie"};
+	char names_2[6][NAME_SIZE] = {"John", "Jim", "Alice", "Kevin", "Eason", "William"};
+	char names_3[6][NAME_SIZE] = {"Enderson", "Doe", "Frank", "Bob","Kevin","Eason"};
+	createNode(4444, names_1, 6);
+	createNode(1111, names_2, 6);
+	createNode(2222, names_3, 6);
+
 	// Accout Database
 	HashTable userAccountDatabase;
 	initHashTable(&userAccountDatabase);
 
 	char *ip = "127.0.0.1";
 	int port = atoi(argv[1]);
+	room = port;
 	int option = 1;
 	int listenfd = 0, connfd = 0;
   	struct sockaddr_in serv_addr;
@@ -284,6 +419,8 @@ int main(int argc, char **argv){
 
 	printf("=== WELCOME TO THE CHATROOM ===\n");
 
+	init_file();
+
 	while(1){
 		socklen_t clilen = sizeof(cli_addr);
 		connfd = accept(listenfd, (struct sockaddr*)&cli_addr, &clilen);
@@ -311,6 +448,8 @@ int main(int argc, char **argv){
 		/* Reduce CPU usage */
 		sleep(1);
 	}
+	// Close the file
+	fclose(logfile);
 
 	return EXIT_SUCCESS;
 }
