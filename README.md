@@ -1,10 +1,6 @@
-# Chatroom-in-C
+memebr
 
-A simple Chatroom built in C programming language. The program has two files - <b>server.c</b> and <b>client.c</b>. The program is built uses multithreading for handling multiple clients.
+private:Eason>pri_msg
 
-# Run the program
-Just simply run the Makefile using this command. <br/>
-$ make Makefile compile
+find:target_str
 
-# YouTube Video Tutorial
-[https://youtu.be/fNerEo6Lstw](https://youtu.be/fNerEo6Lstw)
