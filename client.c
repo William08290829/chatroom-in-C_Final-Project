@@ -210,7 +210,7 @@ int main(int argc, char **argv){
       fgets(password, PASSWORD_SIZE, stdin);
       str_trim_lf(password, strlen(password));
 
-      // 格式為"create account password"
+      // 格式為"create name password"
       char request[REQUEST_SIZE];
       snprintf(request, sizeof(request), "create %s %s", name, password);
       send(sockfd, request, strlen(request), 0);

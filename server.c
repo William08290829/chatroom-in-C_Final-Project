@@ -21,6 +21,7 @@
 #define REQUEST_SIZE 100
 #define RESPONSE_SIZE 100
 #define MAX_BLACKLIST_SIZE 10
+#define LINE_LENGTH 100
 
 
 static _Atomic unsigned int cli_count = 0;	//_Atomic原子性 不會被其他線程所打斷
@@ -106,6 +107,7 @@ pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;	//mutex互斥鎖
 pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 // 全局變量，用於文件操作
 FILE *logfile;
+FILE *accountfile;
 
 // 清除文件内容
 void clear_file() {
@@ -127,8 +129,9 @@ void init_file() {
 	char filename[32];
 	sprintf(filename, "room%d.txt", room);
     logfile = fopen(filename, "a");
-    if (logfile == NULL) {
-        perror("ERROR: Could not open log file");
+	accountfile = fopen("account.txt", "a+");
+    if (logfile == NULL || accountfile == NULL) {
+        perror("ERROR: Could not open file");
         exit(EXIT_FAILURE);
     }
 	pthread_mutex_unlock(&file_mutex);  // 解鎖
@@ -141,6 +144,27 @@ void write_to_file(const char *message) {
         fprintf(logfile, "%s", message);
         fflush(logfile); // 立即寫入文件
     }
+	pthread_mutex_unlock(&file_mutex);  // 解鎖
+}
+
+void read_accountfile(HashTable *hashTable){
+	char line[LINE_LENGTH];
+	while (fgets(line, LINE_LENGTH, accountfile) != NULL) {
+        char *name = strtok(line, " \t\n");
+		char *password = strtok(NULL, " \t\n");
+		insertItem(hashTable, name, password);
+    }
+}
+
+void add_accountfile(const char *name, const char *password){
+	pthread_mutex_lock(&file_mutex);  // 加鎖
+	if(accountfile == NULL){
+		perror("Error opening file");
+		printf("accountfile == NULL\n");
+		return;
+	}
+	fprintf(accountfile, "%s %s\n", name, password);
+	fflush(accountfile);
 	pthread_mutex_unlock(&file_mutex);  // 解鎖
 }
 // ==============================================================
@@ -259,6 +283,10 @@ void handle_account_request(HashTable *hashTable, char *request, int sockfd, int
 		if (name != NULL && password != NULL) {
 			insertItem(hashTable, name, password);
 			printf("An account has been created.\n[Name:%s Password:%s]\n", name, password);
+			// ================================================================================
+			fprintf(accountfile, "%s %s\n", name, password);
+			fflush(accountfile);
+			// ================================================================================
 			char response[RESPONSE_SIZE];
            	snprintf(response, RESPONSE_SIZE, "Hello!, %s\n", name);
 			send(sockfd, response, sizeof(response), 0);
@@ -420,6 +448,7 @@ int main(int argc, char **argv){
 	printf("=== WELCOME TO THE CHATROOM ===\n");
 
 	init_file();
+	read_accountfile(&userAccountDatabase);
 
 	while(1){
 		socklen_t clilen = sizeof(cli_addr);
@@ -450,6 +479,7 @@ int main(int argc, char **argv){
 	}
 	// Close the file
 	fclose(logfile);
+	fclose(accountfile);
 
 	return EXIT_SUCCESS;
 }
