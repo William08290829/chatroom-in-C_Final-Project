@@ -363,7 +363,7 @@ void *handle_client(void *arg){
 			if(strlen(buff_out) > 0){
 				// handle_account_request(&userAccountDatabase, buff_out, cli->sockfd, cli->uid);
 				send_message(buff_out, cli->uid);
-
+				write_to_file(buff_out);
 				str_trim_lf(buff_out, strlen(buff_out));
 				printf("%s\n", buff_out);
 				// printf("%s -> %s\n", buff_out, cli->name);
